@@ -1,0 +1,6 @@
+out/linux/QIJIA
+out/linux/*.o
+out/linux/QJLOG*
+pro/linux/*
+pro/QCursesLib.pro.user
+pro/Makefile
