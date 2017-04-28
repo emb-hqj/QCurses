@@ -1,11 +1,11 @@
 ﻿#pragma once
-#include <QJCore/GDef.h>
 #include <vector>
-#include <list>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <thread>
+#include "GDef.h"
+
 
 #define QJconnect( sender,event, accepter, slot) \
     QJEventCenter::GetInstance().addObserver(sender,std::bind(&event,sender,std::placeholders::_1),#event, \
@@ -17,10 +17,16 @@
 #define QJemit(event,eventNum) \
     QJEventCenter::GetInstance().PostNotification(#event,eventNum,this)
 
+
+
+typedef  int FunctorPara;
+typedef  std::function<void(FunctorPara)> Functor;
+typedef void* WeakVoid;
+
 struct QJEventObserver
 {
-    QJEventObserver(void* p_send,std::function<void(int)> sendFunc,std::string sendFuncName,
-                    void* p_slot,std::function<void(int)> slotFunc, std::string slotFuncName)
+    QJEventObserver(WeakVoid p_send,Functor sendFunc,std::string sendFuncName,
+                    WeakVoid p_slot,Functor slotFunc, std::string slotFuncName)
         :m_pSendPtr(p_send)
         ,m_SendFunc(sendFunc)
         ,m_SendFuncName(sendFuncName)
@@ -28,30 +34,38 @@ struct QJEventObserver
         ,m_SlotFunc(slotFunc)
         ,m_SlotFuncName(slotFuncName)
     {}
-    void * m_pSendPtr ;
-    std::function<void(int)>	m_SendFunc;
+    WeakVoid m_pSendPtr ;
+    Functor	m_SendFunc;
     std::string	m_SendFuncName;
-    void* m_pSlotPtr;
-    std::function<void(int)>	m_SlotFunc;
+    WeakVoid m_pSlotPtr;
+    Functor	m_SlotFunc;
     std::string	m_SlotFuncName;
 };
 
+typedef std::vector<std::shared_ptr<QJEventObserver> > ObserVec;
+typedef std::shared_ptr<ObserVec> ObserVecPtr;
 class QJEventCenter
 {
 public:
+
     inline static QJEventCenter& GetInstance()
     {
         static QJEventCenter Instance;
         return  Instance;
     }
-    void addObserver(void* p_send,std::function<void(int)> sendFunc,std::string sendFuncName,
-                     void* p_slot,std::function<void(int)> slotFunc, std::string slotFuncName);
-    void removeObserver(std::string sendFuncName, std::string slotFuncName, void *sender, void *slot);
-    void PostNotification(std::string sendFuncName, int ref, void *ptr);
+    void addObserver(WeakVoid p_send,Functor sendFunc,std::string sendFuncName,
+                     WeakVoid p_slot,Functor slotFunc, std::string slotFuncName);
+    void removeObserver(std::string sendFuncName, std::string slotFuncName, WeakVoid sender, WeakVoid slot);
+    void PostNotification(std::string sendFuncName, FunctorPara ref, WeakVoid sender);
 private:
-    bool ObserverExisted(std::string sendFuncName, std::string slotFuncName, void *sender, void *slot);
-    QJEventCenter(){}
+    bool ObserverExisted(std::string sendFuncName, std::string slotFuncName, WeakVoid sender, WeakVoid slot);
+    QJEventCenter()
+    {
+        m_array.reset(new ObserVec);
+    }
     ~QJEventCenter(){}
-    std::vector<QJEventObserver*>	m_array;
+    ObserVecPtr m_array;
+    std::mutex mtx;
 };
+
 

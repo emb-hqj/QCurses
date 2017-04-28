@@ -21,7 +21,8 @@ HEADERS +=  ../src/QJCtrl/BaseItem.h \
     $$PWD/../src/QJFrame/BasePage.h \
     $$PWD/../src/QJFrame/QJAPPlication.h \
     $$PWD/../src/QJFrame/QJKeyControl.h \
-    $$PWD/../src/QJFrame/QJPageControl.h
+    $$PWD/../src/QJFrame/QJPageControl.h \
+    $$PWD/../src/QJCore/QJMutex.h
 
 SOURCES += \
     $$PWD/../src/QJCtrl/EntryItem.cpp \

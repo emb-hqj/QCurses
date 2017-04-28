@@ -1,136 +1,136 @@
 ﻿#include "QJEventCenter.h"
+#include "QJMutex.h"
 #include <algorithm>
 
-void QJEventCenter::addObserver(void *p_send, std::function<void (int)> sendFunc, std::string sendFuncName, void *p_slot, std::function<void (int)> slotFunc, std::string slotFuncName)
+void QJEventCenter::addObserver(WeakVoid p_send, Functor sendFunc, std::string sendFuncName,WeakVoid p_slot, Functor slotFunc, std::string slotFuncName)
 {
     if (this->ObserverExisted(sendFuncName, slotFuncName,p_send,p_slot))
     {
         return;
     }
-    QJEventObserver *observe = QJNEW QJEventObserver(p_send, sendFunc,sendFuncName,p_slot,slotFunc,slotFuncName);
-    m_array.push_back(observe);
-}
-
-bool QJEventCenter::ObserverExisted(std::string sendFuncName, std::string slotFuncName,void* sender,void* slot)
-{
-    QJEventObserver *obj = nullptr;
-    bool _existed = false;
-
-    auto iter = m_array.begin();
-    for(;iter != m_array.end();iter++)
+    std::shared_ptr<QJEventObserver> observe ( QJNEW QJEventObserver(p_send, sendFunc,sendFuncName,p_slot,slotFunc,slotFuncName) );
+    qijia::QJMutex lock (mtx);
+    if (!m_array.unique ())
     {
-        obj = (*iter);
-        if (!obj)
-        {
-            continue;
-        }
-        if (obj->m_SendFuncName==sendFuncName)
-        {
-            if (obj->m_SlotFuncName == slotFuncName)
-            {
-                if (sender == obj->m_pSendPtr)
-                {
-                    if (slot == obj->m_pSlotPtr)
-                    {
-                        _existed=true;
-                        break;
-                    }
-                }
-            }
-        }
+        m_array.reset (new ObserVec(*m_array));
+        QJLOG("copy m_array in addObserver \n");
     }
-    return _existed;
+    m_array->push_back(observe);
 }
 
-void QJEventCenter::removeObserver(std::string sendFuncName, std::string slotFuncName,void* sender,void* slot)
+bool QJEventCenter::ObserverExisted(std::string sendFuncName, std::string slotFuncName, WeakVoid sender, WeakVoid slot)
 {
-    QJEventObserver *obj = nullptr;
-    auto iter = m_array.begin();
-    for(;iter != m_array.end();iter++)
+    //only read not write
+    bool b_existed = false;
+    ObserVecPtr array;
     {
-        obj = (*iter);
-        if (!obj)
-            continue;
-        if (obj->m_SendFuncName==sendFuncName)
-        {
-            if (obj->m_SlotFuncName == slotFuncName)
-            {
-                if (sender == obj->m_pSendPtr)
-                {
-                    if (slot == obj->m_pSlotPtr)
-                    {
-                        m_array.erase(iter);
-                        QJDELETE(obj);
-                        return;
-                    }
-                }
-            }
-        }
+        qijia::QJMutex lock (mtx);
+        array = m_array;
+        QJASSERT(!m_array.unique ());
     }
-}
-
-void QJEventCenter::PostNotification(std::string sendFuncName, int ref, void* ptr)
-{
-
-    std::vector<QJEventObserver*>	m_arrayRunOver;
-
-    auto sp = m_array.begin();
-    for(;sp != m_array.end();sp++)
+    auto iter =   array->begin();
+    while(iter !=   (array)->end())
     {
-        if (!(*sp))
+        void* objShareSend = ((*iter)->m_pSendPtr);
+        void* objShareSlot = ((*iter)->m_pSlotPtr);
+        if (objShareSend && objShareSlot)
         {
-            continue;
-        }
-        QJASSERT(0 == count(m_arrayRunOver.cbegin (),m_arrayRunOver.cend (),*sp));
-        m_arrayRunOver.push_back (*sp);
-        if ((*sp)->m_SendFuncName == sendFuncName)
-        {
-            if (ptr == nullptr)
-                break;
-            if (ptr == (*sp)->m_pSendPtr)
+            if ((*iter)->m_SendFuncName==sendFuncName)
             {
-//                if ( (*sp)->ObserverCallBack(ref) )
-                if ( (*sp)->m_SlotFunc)
+                if ((*iter)->m_SlotFuncName == slotFuncName)
                 {
-                    (*sp)->m_SlotFunc(ref);
-                    //bug ! 這裏出現槽函數釋放信號槽會使ｓｐ失效！！！
-                    if (!m_array.empty ())//DELET all signal-slot
+                    if (sender== objShareSend)
                     {
-                        sp = m_array.begin();
-
-                        for(;sp != m_array.end();sp++)
+                        if (slot== objShareSlot)
                         {
-                            int result = count(m_arrayRunOver.cbegin (),m_arrayRunOver.cend (),*sp);
-
-                            QJASSERT((result == 1) | (result==0));
-
-                            if (sp == (m_array.end ()-1))
-                            {
-                                if (result ==1)
-                                {
-                                    break;
-                                }
-                            }
-                            if (result == 0)
-                            {
-                                if (sp != m_array.begin ())
-                                {
-                                    sp--;
-                                }
-                                break;
-                            }
-
+                            b_existed=true;
+                            break;
                         }
+                    }
+                }
+            }
+            ++iter;
+        }
+        else
+        {
+            QJLOG("in ObserverExisted sender or slot ptr null");
+        }
+    }
+    return b_existed;
+}
 
+void QJEventCenter::removeObserver(std::string sendFuncName, std::string slotFuncName,WeakVoid sender,WeakVoid slot)
+{
+    qijia::QJMutex lock (mtx);
+    if (!m_array.unique ())
+    {
+        m_array.reset (new ObserVec(*m_array));
+        QJLOG("copy m_array in removeObserver \n");
+    }
+    auto iter =   (m_array)->begin();
+    while(iter !=   (m_array)->end())
+    {
+        void* objShareSend = ((*iter)->m_pSendPtr);
+        void* objShareSlot = ((*iter)->m_pSlotPtr);
+        if (objShareSend && objShareSlot)
+        {
+            if ((*iter)->m_SendFuncName==sendFuncName)
+            {
+                if ((*iter)->m_SlotFuncName == slotFuncName)
+                {
+                    if (sender== objShareSend)
+                    {
+                        if (slot== objShareSlot)
+                        {
+                            iter =   (m_array)->erase(iter);
+                            continue;
+                        }
+                    }
+                }
+            }
+            ++iter;
+        }
+        else
+        {
+            iter =   (m_array)->erase (iter);
+        }
+    }
+}
+
+void QJEventCenter::PostNotification(std::string sendFuncName, FunctorPara ref, WeakVoid sender)
+{
+    //only read not write
+    ObserVecPtr array;
+    {
+        qijia::QJMutex lock (mtx);
+        array = m_array;
+        QJASSERT(!m_array.unique ());
+    }
+    auto iter =   (array)->begin();
+    while(iter !=   (array)->end())
+    {
+        void* objShareSend = ((*iter)->m_pSendPtr);
+        if (objShareSend)
+        {
+            if ((*iter)->m_SendFuncName==sendFuncName)
+            {
+                if (sender== objShareSend)
+                {
+                    if (((*iter)->m_pSlotPtr))
+                    {
+                        (*iter)->m_SlotFunc(ref);
                     }
                     else
                     {
-                        break;
+                        QJLOG("in PostNotification slot ptr null");
                     }
-
                 }
-
             }
+            ++iter;
+        }
+        else
+        {
+            QJLOG("in PostNotification sender ptr null");
         }
     }
 }
